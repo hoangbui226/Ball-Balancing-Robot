@@ -1,0 +1,10 @@
+NUCLEO-L152RE (STM32L152RE) 3D files for Fusion 360.
+
+Use NUCLEO-L152RE.step — this is the real MB1136 Nucleo-64 PCB (same board as NUCLEO-L152RE). Exported from ST’s official MB1136 Altium design.
+
+NUCLEO-L152RE.stl is only a visual mock-up (USB, headers, MCU) if you want a mesh instead.
+
+Product: https://www.st.com/en/evaluation-tools/nucleo-l152re.html
+Manual: ST UM1724 (Nucleo-64 / MB1136)
+STEP source: ST Community attachment “STEP_[No Variations] for MB1136.PcbDoc.zip”
+  https://community.st.com/stm32-mcus-boards-and-hardware-tools-26/request-for-3d-cad-model-stl-step-of-nucleo-f411re-mb1136c-168242

@@ -1,0 +1,4 @@
+NUCLEO-L152RE.step is derived from STMicroelectronics MB1136 board CAD (NUCLEO-64).
+ST retains rights to the original board design. Use for personal mechanical layout only.
+
+NUCLEO-L152RE.stl is a layout mock-up based on public UM1724 dimensions, not an official ST model.

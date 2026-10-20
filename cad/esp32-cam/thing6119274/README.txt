@@ -1,0 +1,1 @@
+ESP32-CAM 3D object with exact dimensions by goth2k on Thingiverse: https://www.thingiverse.com/thing:6119274
