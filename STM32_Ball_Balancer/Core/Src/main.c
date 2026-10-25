@@ -44,7 +44,12 @@ TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 
 /* USER CODE BEGIN PV */
-
+static const int min_pixels = 80;
+static const int max_misses = 3;
+static int ball_x = 160;
+static int ball_y = 120;
+static int ball_count = 0;
+static int miss_count = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -54,6 +59,9 @@ static void MX_TIM2_Init(void);
 static void MX_TIM3_Init(void);
 /* USER CODE BEGIN PFP */
 static void servos_set_deg(uint8_t a, uint8_t b, uint8_t c);
+static void servos_startup(void);
+static void uart_cam_init(void);
+static void uart_poll(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -72,6 +80,147 @@ static void servos_set_deg(uint8_t a, uint8_t b, uint8_t c)
   __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, deg_to_us(a)); /* PA5, D13 */
   __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, deg_to_us(b)); /* PA6, D12 */
   __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, deg_to_us(c)); /* PA7, D11 */
+}
+
+static void servos_startup(void) {
+	servos_set_deg(120, 120, 120);
+	HAL_Delay(800);
+	servos_set_deg(60, 60, 60);
+	HAL_Delay(800);
+	servos_set_deg(100,100,100);
+}
+
+/* ESP32 GPIO1 TX -> PA10 D2 USART1 RX. */
+static void uart_cam_init(void)
+{
+  GPIO_InitTypeDef gpio = {0};
+
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_USART1_CLK_ENABLE();
+  __HAL_RCC_USART2_CLK_ENABLE();
+
+  gpio.Mode = GPIO_MODE_AF_PP;
+  gpio.Pull = GPIO_PULLUP;
+  gpio.Speed = GPIO_SPEED_FREQ_HIGH;
+  gpio.Alternate = GPIO_AF7_USART1;
+  gpio.Pin = GPIO_PIN_10;
+  HAL_GPIO_Init(GPIOA, &gpio);
+
+  gpio.Alternate = GPIO_AF7_USART2;
+  gpio.Pin = GPIO_PIN_2;
+  HAL_GPIO_Init(GPIOA, &gpio);
+
+  /* 16 MHz clock, 115200 baud, oversampling 16. */
+  USART1->CR1 = 0;
+  USART1->BRR = 139;
+  USART1->CR1 = USART_CR1_UE | USART_CR1_RE;
+
+  USART2->CR1 = 0;
+  USART2->BRR = 139;
+  USART2->CR1 = USART_CR1_UE | USART_CR1_TE;
+}
+
+// send character to UART
+static void uart_tx(char c)
+{
+  while ((USART2->SR & USART_SR_TXE) == 0) {
+  }
+  USART2->DR = (uint8_t)c;
+}
+
+// write integer to UART
+static void uart_write_int(int value)
+{
+  char digits[8];
+  int count = 0;
+
+  if (value < 0) {
+    uart_tx('-');
+    value = -value;
+  }
+  if (value == 0) {
+    uart_tx('0');
+    return;
+  }
+  while (value > 0 && count < 8) {
+    digits[count++] = (char)('0' + (value % 10));
+    value /= 10;
+  }
+  while (count > 0) {
+    uart_tx(digits[--count]);
+  }
+}
+
+// format the sample from UART
+static int read_sample(const char *text, int *x, int *y, int *count)
+{
+  int value = 0;
+  int field = 0;
+
+  while (*text != '\0') {
+    if (*text == ' ') {
+      if (field == 0) {
+        *x = value;
+      } else if (field == 1) {
+        *y = value;
+      }
+      if (field < 2) {
+        field++;
+        value = 0;
+      }
+    } else if (*text >= '0' && *text <= '9') {
+      value = value * 10 + (*text - '0');
+    }
+    text++;
+  }
+  if (field != 2) {
+    return 0;
+  }
+  *count = value;
+  return 1;
+}
+
+static void uart_poll(void)
+{
+  static char line[24];
+  static int length = 0;
+
+  while ((USART1->SR & USART_SR_RXNE) != 0) {
+    char c = (char)(USART1->DR & 0xFF);
+    if (c == '\n' || c == '\r') {
+      if (length > 0) {
+        int x = 0;
+        int y = 0;
+        int count = 0;
+        line[length] = '\0';
+        if (read_sample(line, &x, &y, &count)) {
+          ball_count = count;
+          if (ball_count >= min_pixels) { // filter out noise
+            ball_x = x;
+            ball_y = y;
+            miss_count = 0;
+          } else {
+            miss_count++;
+            if (miss_count >= max_misses) {
+              ball_x = 160;
+              ball_y = 120;
+              miss_count = 0;
+            }
+          }
+          uart_write_int(ball_x);
+          uart_tx(' ');
+          uart_write_int(ball_y);
+          uart_tx(' ');
+          uart_write_int(ball_count);
+          uart_tx('\r');
+          uart_tx('\n');
+        }
+        length = 0;
+      }
+    } else if (length < (int)sizeof(line) - 1) {
+      line[length++] = c;
+    }
+  }
 }
 /* USER CODE END 0 */
 
@@ -111,13 +260,11 @@ int main(void)
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1); /* PA6, D12 */
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2); /* PA7, D11 */
 
-  servos_set_deg(90, 90, 90);
-  HAL_Delay(800);
-  servos_set_deg(27, 27, 27);
-  HAL_Delay(800);
-  servos_set_deg(62, 62, 62);
+  servos_startup();
+  uart_cam_init();
    /* USER CODE END 2 */
 
+   
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
@@ -125,6 +272,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    uart_poll();
   }
   /* USER CODE END 3 */
 }

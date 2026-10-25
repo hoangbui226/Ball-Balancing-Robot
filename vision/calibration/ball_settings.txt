@@ -1,0 +1,18 @@
+# locked ball color and camera settings
+
+h_min 5
+h_max 25
+s_min 40
+s_max 255
+v_min 60
+v_max 255
+brightness 0
+contrast 0
+saturation 0
+exposure 200
+gain 0
+whitebal 1
+auto_exposure 1
+light 0
+min_radius 6
+max_radius 60
